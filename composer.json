@@ -1,0 +1,24 @@
+{
+  "name": "tusimo/jushuitan",
+  "type": "library",
+  "description": "A PHP client for jushuitan sdk",
+  "keywords": ["jushuitan", "sdk"],
+  "homepage": "http://github.com/tusimo/jushuitan",
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "tusimo",
+      "email": "ucc862@gmail.com"
+    }
+  ],
+  "require": {
+    "php": "^7.0",
+    "guzzlehttp/guzzle": "^6.3",
+    "nesbot/carbon": "^1.33"
+  },
+  "autoload": {
+    "psr-4" : {
+      "Tusimo\\Jushuitan\\" : "src/"
+    }
+  }
+}
