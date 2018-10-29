@@ -2,6 +2,7 @@
 namespace Tusimo\Jushuitan;
 
 use Carbon\Carbon;
+use GuzzleHttp\Psr7\Request;
 use GuzzleHttp\Psr7\Response;
 
 class Client extends \GuzzleHttp\Client
@@ -159,6 +160,23 @@ class Client extends \GuzzleHttp\Client
     public function callQimenRemote($method, $parameters)
     {
         return $this->get($this->getBaseUrl(true) . '?' . http_build_query($this->getQimenParameters($method, $parameters)));
+    }
+
+    public function makeRequest($method, $parameters)
+    {
+        return new Request(
+            'POST',
+            $this->getBaseUrl() . '?' . http_build_query($this->getSystemParameters($method)),
+            ['json' => $parameters]
+        );
+    }
+
+    public function makeQimenRequest($method, $parameters)
+    {
+        return new Request(
+            'GET',
+            $this->getBaseUrl() . '?' . http_build_query($this->getQimenParameters($method, $parameters))
+        );
     }
 
     /**
