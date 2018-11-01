@@ -1,9 +1,7 @@
 <?php
 namespace Tusimo\Jushuitan;
 
-use Carbon\Carbon;
 use GuzzleHttp\Psr7\Request;
-use GuzzleHttp\Psr7\Response;
 
 class Client extends \GuzzleHttp\Client
 {
@@ -104,166 +102,111 @@ class Client extends \GuzzleHttp\Client
         return $this->taobaoAppsecret;
     }
 
-
-    private function getJSTSign($method, $time)
+    private function getSystemParameters($method, $params)
     {
-        return md5($method . $this->getPartnerId() . 'token'. $this->getToken() . 'ts' . $time . $this->getPartnerKey());
-    }
-
-    private function getSystemParameters($method)
-    {
-        $time = time();
-        return [
+        # 默认系统参数
+        $systemParams = array(
             'partnerid' => $this->getPartnerId(),
             'token' => $this->getToken(),
             'method' => $method,
-            'ts' => $time,
-            'sign' => $this->getJSTSign($method, $time)
-        ];
+            'ts' => time()
+        );
+        //是否包含jst
+        if (strstr($method, 'jst')) {
+            $systemParams['sign_method'] = 'md5';
+            $systemParams['format'] = 'json';
+            $systemParams['app_key'] = $this->getTaobaoAppKey();
+            $systemParams['timestamp'] = date("Y-m-d H:i:s", $systemParams['ts']);
+            $systemParams['target_app_key'] = '23060081';
+        }
+        return $this->generateSignature($systemParams, $params);
+    }
+    private function generateSignature($system_params, $params = null)
+    {
+        $sign_str = '';
+        ksort($system_params);
+        //奇门接口
+        if(strstr($system_params['method'], 'jst'))
+        {
+            $method = str_replace('jst.','',$system_params['method']);
+            $jstsign = $method.$this->getPartnerId()."token".$this->getToken()."ts".$system_params['ts'].$this->getPartnerKey();
+
+            $system_params['jstsign'] = md5($jstsign);
+
+            //如果有业务参数则合并
+            if($params!=null)
+            {
+                $system_params = array_merge($system_params,$params);
+                ksort($system_params);
+
+                foreach($system_params as $key=>$value) {
+                    if(is_array($value))
+                    {
+                        $sign_str.= $key.join(',',$value);
+                        continue;
+                    }
+                    $sign_str .=$key.strval($value);
+                }
+            }
+            $system_params['sign'] = strtoupper(md5($this->getTaobaoAppsecret().$sign_str.$this->getTaobaoAppsecret()));
+        }
+        else  //普通接口
+        {
+            $no_exists_array = array('method','sign','partnerid','partnerkey');
+
+            $sign_str = $system_params['method'].$system_params['partnerid'];
+            foreach($system_params as $key=>$value) {
+
+                if(in_array($key,$no_exists_array)) {
+                    continue;
+                }
+                $sign_str.=$key.strval($value);
+            }
+
+            $sign_str.=$this->getPartnerKey();
+            $system_params['sign'] = md5($sign_str);
+        }
+
+        return $system_params;
     }
 
-    private function getQimenParameters($method, $parameters)
+    protected function getParameters($method, $parameters)
     {
-        $now = Carbon::now();
-        $params = [
-            'method' => $method,
-            'app_key' => $this->getTaobaoAppKey(),
-            'timestamp' => $now->toDateTimeString(),
-            'format' => 'json',
-            'v' => '2.0',
-            'partnerid' => $this->getPartnerId(),
-            'target_app_key' => '23060081',
-            'sign_method' => 'md5',
-            'token' => $this->getToken(),
-            'ts' => $now->getTimestamp(),
-            'jstsign' => $this->getJSTSign(ltrim($method, 'jst.'), $now->getTimestamp()),
-        ];
-        $params = array_merge($parameters, $params);
-        ksort($params);
-        $stringToBeSigned = $this->getTaobaoAppsecret();
-        foreach ($params as $k => $v) {
-            if (is_array($v)) {
-                $stringToBeSigned .= $k . join(',', $v);
-            } else {
-                $stringToBeSigned .= "$k$v";
+        $urlParameters = $this->getSystemParameters($method, $parameters);
+
+        if($this->isQimen($method)) {
+            foreach($parameters as $key=>$value) {
+                if(is_array($value)) {
+                    $urlParameters[$key] = join(',',$value);
+                    continue;
+                }
+                $urlParameters[$key]=$value;
             }
         }
-        $stringToBeSigned .= $this->getTaobaoAppsecret();
-        $sign = strtoupper(md5($stringToBeSigned));
-        unset($k, $v, $stringToBeSigned);
-        return array_merge($params, ['sign' => $sign]);
+        return $urlParameters;
+    }
+
+    public function isQimen($method)
+    {
+        if (strstr($method, 'jst')) {
+            return true;
+        }
+        return false;
     }
 
     public function callRemote($method, $parameters)
     {
-        return $this->post($this->getBaseUrl() . '?' . http_build_query($this->getSystemParameters($method)), [
+        return $this->post($this->getBaseUrl($this->isQimen($method)) . '?' . http_build_query($this->getParameters($method, $parameters)), [
             'json' => $parameters
         ]);
-    }
-
-    public function callQimenRemote($method, $parameters)
-    {
-        return $this->get($this->getBaseUrl(true) . '?' . http_build_query($this->getQimenParameters($method, $parameters)));
     }
 
     public function makeRequest($method, $parameters)
     {
         return new Request(
             'POST',
-            $this->getBaseUrl() . '?' . http_build_query($this->getSystemParameters($method)),
+            $this->getBaseUrl() . '?' . http_build_query($this->getParameters($method, $parameters)),
             ['json' => $parameters]
         );
-    }
-
-    public function makeQimenRequest($method, $parameters)
-    {
-        return new Request(
-            'GET',
-            $this->getBaseUrl() . '?' . http_build_query($this->getQimenParameters($method, $parameters))
-        );
-    }
-
-    /**
-     * @param Response $response
-     * @return mixed
-     * @throws RequestException
-     */
-    public function getFormatResponse(Response $response)
-    {
-        $responseArray = json_decode($response->getBody()->getContents(), true);
-        if ($responseArray['code'] != 0 || !$responseArray['issuccess']) {
-            throw new RequestException($responseArray['msg'], $responseArray['code']);
-        }
-        return $responseArray;
-    }
-
-    public function getFormatQimenResponse(Response $response)
-    {
-        $responseArray = json_decode($response->getBody()->getContents(), true);
-        if (isset($responseArray['response']) &&
-            isset($responseArray['response']['flag']) &&
-            $responseArray['response']['flag'] == 'failure'
-        ) {
-            throw new RequestException($responseArray['response']['message'], $responseArray['response']['code']);
-        }
-        return $responseArray['response'];
-    }
-
-    public function getShop($nick)
-    {
-        return $this->getShops([$nick])[0] ?? null;
-    }
-
-    public function getShops($nicks = [])
-    {
-        $response = $this->callRemote('shops.query', ['nicks' => $nicks]);
-        return $this->getFormatResponse($response)['shops'];
-    }
-
-    public function getOrders($shopId, $modifiedBegin, $modifiedEnd, $pageIndex = 1, $pageSize = 50, $status = null, $soIds = [], $hasLabel = true)
-    {
-        $modifiedEnd = new Carbon($modifiedEnd);
-        $modifiedBegin = new Carbon($modifiedBegin);
-        if ($modifiedBegin >= $modifiedEnd) {
-            throw new \InvalidArgumentException("开始时间不能大于结束时间");
-        }
-        if ($modifiedEnd->diffInDays($modifiedBegin) > 7) {
-            throw new \InvalidArgumentException("日期不能相差超过7天");
-        }
-        $args = [
-            'shop_id' => $shopId,
-            'modified_begin' => $modifiedBegin->toDateTimeString(),
-            'modified_end' => $modifiedEnd->toDateTimeString(),
-            'status' => $status,
-            'so_ids' => $soIds,
-            'has_label' => $hasLabel,
-            'page_index' => max(1, $pageIndex),
-            'page_size' => max(0, min(50, $pageSize))
-        ];
-        $response = $this->callRemote('orders.single.query', $args);
-        return $this->getFormatResponse($response);
-    }
-
-    public function getQimenOrders($shopId, $modifiedBegin, $modifiedEnd, $pageIndex = 1, $pageSize = 50, $status = null, $soIds = [])
-    {
-        $modifiedEnd = new Carbon($modifiedEnd);
-        $modifiedBegin = new Carbon($modifiedBegin);
-        if ($modifiedBegin >= $modifiedEnd) {
-            throw new \InvalidArgumentException("开始时间不能大于结束时间");
-        }
-        if ($modifiedEnd->diffInDays($modifiedBegin) > 7) {
-            throw new \InvalidArgumentException("日期不能相差超过7天");
-        }
-        $parameters = [
-            'shop_id' => $shopId,
-            'modified_begin' => $modifiedBegin->toDateTimeString(),
-            'modified_end' => $modifiedEnd->toDateTimeString(),
-            'page_index' => max(1, $pageIndex),
-            'page_size' => max(0, min(50, $pageSize))
-        ];
-        !empty($status) && $parameters['status'] = $status;
-        !empty($soIds) && $pageSize['so_ids'] = json_encode($soIds);
-        $response = $this->callQimenRemote('jst.orders.query', $parameters);
-        return $this->getFormatQimenResponse($response);
     }
 }
