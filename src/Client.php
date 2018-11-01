@@ -5,13 +5,6 @@ use Carbon\Carbon;
 use GuzzleHttp\Psr7\Request;
 use GuzzleHttp\Psr7\Response;
 
-/**
- * Created by PhpStorm.
- * User: admin
- * Date: 2018/10/23
- * Time: 17:13
- */
-require_once '../vendor/autoload.php';
 class Client extends \GuzzleHttp\Client
 {
     private $partnerId;
@@ -273,24 +266,4 @@ class Client extends \GuzzleHttp\Client
         $response = $this->callQimenRemote('jst.orders.query', $parameters);
         return $this->getFormatQimenResponse($response);
     }
-}
-
-$client = new Client(
-    'ywv5jGT8ge6Pvlq3FZSPol345asd',
-    'ywv5jGT8ge6Pvlq3FZSPol2323',
-    '181ee8952a88f5a57db52587472c3798',
-    '24704285',
-    'ecd84fc8cb3319d1e9f1933d4a0f32aa',
-    true,
-    false
-);
-//var_dump($client->getBaseUrl());
-//var_dump($client->getShop(''));
-//var_dump($client->getShops(['蚂蚁', '淘宝1号']));
-//var_dump($client->getOrders(10039779, '2018-01-01 00:00:00', '2018-01-06 00:00:00'));
-try {
-    var_dump($client->getOrders(14, '2018-07-28 00:00:00', '2018-08-02 00:00:00', 1, 10, 'Question'));
-} catch (\Exception $e) {
-    var_dump($e);
-    echo $e->getMessage() . $e->getCode();
 }
